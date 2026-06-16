@@ -88,6 +88,10 @@ select{font-family:inherit;font-size:15px;padding:9px 12px;border-radius:10px;bo
 .modal-card{background:var(--card);border-radius:16px;box-shadow:0 10px 40px rgba(16,24,40,.25);padding:22px;width:100%;max-width:360px}
 .inp{width:100%;font-size:15px;padding:12px 13px;border:1px solid var(--line);border-radius:10px;margin-bottom:10px;font-family:inherit}
 .inp:focus{outline:none;border-color:var(--brand2)}
+textarea.inp{resize:vertical;min-height:42px}
+.reportwrap{margin-top:12px;border-top:1px dashed var(--line);padding-top:10px}
+.reportbtn{color:var(--muted)}
+.reportbox{margin-top:8px;padding:10px;border:1px solid var(--line);border-radius:10px;background:#fafbfd}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
@@ -260,6 +264,38 @@ function modeCard(ic,t,d,fn){
   const c=el(`<button class="btn mode"><span class="ic">${ic}</span><span class="t">${t}</span><span class="d">${esc(d)}</span></button>`);
   c.onclick=fn; return c;
 }
+// 문항별 오류 신고·의견 (필요시에만 펼침)
+function reportBox(qid){
+  const wrap=el(`<div class="reportwrap"></div>`);
+  if(!CLOUD){ return wrap; }
+  const btn=el(`<button class="btn ghost sm reportbtn">⚐ 오류 신고 · 의견</button>`);
+  let panel=null;
+  btn.onclick=()=>{
+    if(panel){ panel.remove(); panel=null; btn.textContent='⚐ 오류 신고 · 의견'; return; }
+    btn.textContent='✕ 닫기';
+    panel=el(`<div class="reportbox"></div>`);
+    let kind='정답 오류';
+    const kinds=el(`<div class="chips" style="margin-bottom:8px"></div>`);
+    ['정답 오류','보기 오류','오탈자','기타 의견'].forEach(k=>{ const ch=el(`<button class="chip${k===kind?' on':''}" style="padding:6px 11px;font-size:13px">${k}</button>`); ch.onclick=()=>{ kind=k; kinds.querySelectorAll('.chip').forEach(x=>x.classList.remove('on')); ch.classList.add('on'); }; kinds.appendChild(ch); });
+    const ta=el(`<textarea class="inp" rows="2" placeholder="내용(선택) — 무엇이 잘못됐는지 적어주세요"></textarea>`);
+    const send=el(`<button class="btn primary sm">보내기</button>`);
+    const msg=el(`<span class="small muted" style="margin-left:8px"></span>`);
+    send.onclick=async()=>{
+      send.disabled=true; msg.style.color='var(--muted)'; msg.textContent='전송 중…';
+      try{
+        const { error }=await sb.from('cbt_reports').insert({ question_id:qid, user_id: ST.user?ST.user.id:null, kind:kind, comment:(ta.value||'').trim()||null });
+        if(error) throw error;
+        msg.style.color='var(--ok)'; msg.textContent='접수되었습니다. 감사합니다!'; ta.value='';
+        toast('신고가 접수되었습니다');
+        setTimeout(()=>{ if(panel){ panel.remove(); panel=null; } btn.textContent='⚐ 오류 신고 · 의견'; },1100);
+      }catch(e){ msg.style.color='var(--bad)'; msg.textContent='전송 오류 — 잠시 후 다시'; send.disabled=false; }
+    };
+    const row=el(`<div class="row" style="margin-top:6px"></div>`); row.appendChild(send); row.appendChild(msg);
+    panel.appendChild(kinds); panel.appendChild(ta); panel.appendChild(row);
+    wrap.appendChild(panel);
+  };
+  wrap.appendChild(btn); return wrap;
+}
 
 // ====================================================== PRACTICE
 let pstate=null;
@@ -315,6 +351,7 @@ function renderPractice(){
     card.appendChild(el(`<div class="verdict ${ok?'ok':'bad'}">${ok?'정답입니다 ✓':'오답입니다 ✗  (정답 '+NUM[q.answer]+')'}</div>`));
     if(q.explanation) card.appendChild(el(`<div class="explain"><span class="tag">해설</span>${esc(q.explanation)}</div>`));
   }
+  card.appendChild(reportBox(q.id));
   const nav=el(`<div class="navwrap"></div>`);
   const hb=el(`<button class="btn ghost sm">← 홈</button>`); hb.onclick=home;
   const prev=el(`<button class="btn sm" ${i===0?'disabled':''}>← 이전</button>`); prev.onclick=()=>{ if(i>0){s.idx--;renderPractice();} };
@@ -430,6 +467,7 @@ function submitExam(timeUp){
     c.appendChild(cl);
     if(!a) c.appendChild(el(`<div class="small muted" style="margin-top:8px">미응답</div>`));
     if(q.explanation) c.appendChild(el(`<div class="explain"><span class="tag">해설</span>${esc(q.explanation)}</div>`));
+    c.appendChild(reportBox(q.id));
     app.appendChild(c);
   });
 }
@@ -458,7 +496,7 @@ function review(){
     c.appendChild(cl);
     if(q.explanation) c.appendChild(el(`<div class="explain"><span class="tag">해설</span>${esc(q.explanation)}</div>`));
     const rm=el(`<button class="btn ghost sm" style="margin-top:10px">노트에서 제거</button>`); rm.onclick=()=>{ delWrong(q.id); review(); };
-    c.appendChild(rm); app.appendChild(c);
+    c.appendChild(reportBox(q.id)); c.appendChild(rm); app.appendChild(c);
   });
 }
 function startReviewQuiz(list){ pstate={list,idx:0,correct:0,done:0,answered:false,label:'오답 복습'}; renderReviewQuiz(); }
