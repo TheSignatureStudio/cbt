@@ -18,7 +18,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun 
 .wrap{max-width:780px;margin:0 auto;padding:16px 16px 64px}
 .appbar{display:flex;align-items:center;gap:10px;padding:14px 16px;position:sticky;top:0;z-index:10;
   background:rgba(244,246,249,.92);backdrop-filter:saturate(180%) blur(8px);border-bottom:1px solid var(--line)}
-.appbar .logo{font-weight:800;color:var(--brand);letter-spacing:-.3px}
+.appbar .logo{font-weight:800;color:var(--brand);letter-spacing:-.3px;cursor:pointer}
 .appbar .sub{color:var(--muted);font-size:13px;margin-left:auto}
 button{font-family:inherit;font-size:16px;cursor:pointer}
 .btn{appearance:none;border:1px solid var(--line);background:var(--card);color:var(--ink);
@@ -92,7 +92,7 @@ select{font-family:inherit;font-size:15px;padding:9px 12px;border-radius:10px;bo
 </head>
 <body>
 <div class="appbar">
-  <span class="logo">강도사 고시 CBT</span>
+  <span class="logo" id="logo" role="button" title="홈으로">강도사 고시 CBT</span>
   <span class="sub" id="bar-sub">교회사</span>
   <span id="auth-area"></span>
 </div>
@@ -489,6 +489,7 @@ function renderReviewQuiz(){
 
 // ---------- boot ----------
 loadLocal();
+{ const lg=document.getElementById('logo'); if(lg) lg.onclick=()=>home(); }
 if(!DATA.length){ app.innerHTML='<div class="card empty">문제 데이터를 불러오지 못했습니다.</div>'; }
 else { home(); initAuth(); }
 })();
