@@ -74,6 +74,7 @@ button{font-family:inherit;font-size:16px;cursor:pointer}
 .qj.cur{outline:2px solid var(--brand)}
 .qj.right{background:var(--ok-soft);border-color:var(--ok);color:var(--ok)}
 .qj.wrongj{background:var(--bad-soft);border-color:var(--bad);color:var(--bad)}
+.pjump{max-height:172px;overflow-y:auto;padding:8px;border:1px solid var(--line);border-radius:10px;background:#fbfcff;margin:0 0 12px}
 .score{font-size:40px;font-weight:800;color:var(--brand)}
 .muted{color:var(--muted)} .small{font-size:13px}
 .empty{text-align:center;color:var(--muted);padding:32px 10px}
@@ -276,66 +277,67 @@ function practiceSetup(){
   card.appendChild(chips);
   const row=el(`<div class="row"></div>`);
   const start=el(`<button class="btn primary">시작</button>`);
-  start.onclick=()=>{ const list=shuffle(pool(sel)); if(!list.length){toast('문항이 없습니다');return;} startPractice(list, sel); };
+  start.onclick=()=>{ const list=pool(sel); if(!list.length){toast('문항이 없습니다');return;} startPractice(list, sel); };
   const back=el(`<button class="btn ghost">← 홈</button>`); back.onclick=home;
   row.appendChild(back); row.appendChild(el(`<span class="spacer"></span>`)); row.appendChild(start);
   card.appendChild(row);
   app.appendChild(card);
 }
-function startPractice(list,label){ pstate={list,idx:0,correct:0,done:0,answered:false,label}; renderPractice(); }
+function startPractice(list,label){ pstate={list,idx:0,picks:{},navOpen:false,label}; renderPractice(); }
+function pStats(){ const s=pstate; let correct=0,done=0; s.list.forEach((q,i)=>{ const p=s.picks[i]; if(p!==undefined){ done++; if(p===q.answer)correct++; } }); return {correct,done,wrong:done-correct,unsolved:s.list.length-done}; }
 function renderPractice(){
   clear();
-  const s=pstate, q=s.list[s.idx];
+  const s=pstate, i=s.idx, q=s.list[i], pick=s.picks[i], answered=pick!==undefined, st=pStats();
   const card=el(`<div class="card"></div>`);
-  card.appendChild(el(`<div class="qmeta"><span>${esc(s.label)} · ${s.idx+1} / ${s.list.length}</span><span>맞힘 ${s.correct} / 푼 ${s.done}</span></div>`));
-  const pr=el(`<div class="progress"><i style="width:${(s.idx)/s.list.length*100}%"></i></div>`); card.appendChild(pr);
+  card.appendChild(el(`<div class="qmeta"><span>${esc(s.label)} · <b>${i+1}</b> / ${s.list.length}번째</span><span>맞힘 ${st.correct} · 오답 ${st.wrong} · 안풂 ${st.unsolved}</span></div>`));
+  card.appendChild(el(`<div class="progress"><i style="width:${(i+1)/s.list.length*100}%"></i></div>`));
+  const navBtn=el(`<button class="btn ghost sm" style="margin-bottom:10px">${s.navOpen?'▾':'▸'} 문제 목록 · 안 푼 문제 ${st.unsolved}개</button>`);
+  navBtn.onclick=()=>{ s.navOpen=!s.navOpen; renderPractice(); };
+  card.appendChild(navBtn);
+  if(s.navOpen){
+    const grid=el(`<div class="qjump pjump"></div>`);
+    s.list.forEach((qq,j)=>{ const p=s.picks[j]; let cls=''; if(p!==undefined) cls=(p===qq.answer?' right':' wrongj'); if(j===i) cls+=' cur';
+      const b=el(`<button class="qj${cls}">${j+1}</button>`); b.onclick=()=>{ s.idx=j; renderPractice(); }; grid.appendChild(b); });
+    card.appendChild(grid);
+    card.appendChild(el(`<div class="small muted" style="margin:-4px 0 10px">초록=정답 · 빨강=오답 · 회색=안 푼 문제 · 번호를 눌러 이동</div>`));
+  }
   card.appendChild(el(`<div class="stem">${esc(q.stem)}</div>`));
   const ch=el(`<div class="choices"></div>`);
-  q.choices.forEach((c,i)=>{
-    const b=el(`<button class="choice"><span class="num">${NUM[i+1]}</span><span>${esc(c)}</span></button>`);
-    b.onclick=()=>answerPractice(i+1,ch,card); ch.appendChild(b);
+  q.choices.forEach((c,k)=>{
+    const b=el(`<button class="choice"><span class="num">${NUM[k+1]}</span><span>${esc(c)}</span></button>`);
+    if(answered){ b.setAttribute('disabled',''); if(k+1===q.answer)b.classList.add('correct'); else if(k+1===pick)b.classList.add('wrong'); else b.classList.add('dim'); }
+    else b.onclick=()=>{ s.picks[i]=k+1; if(k+1!==q.answer) addWrong(q.id); bumpStat(k+1===q.answer); renderPractice(); };
+    ch.appendChild(b);
   });
   card.appendChild(ch);
+  if(answered){
+    const ok=pick===q.answer;
+    card.appendChild(el(`<div class="verdict ${ok?'ok':'bad'}">${ok?'정답입니다 ✓':'오답입니다 ✗  (정답 '+NUM[q.answer]+')'}</div>`));
+    if(q.explanation) card.appendChild(el(`<div class="explain"><span class="tag">해설</span>${esc(q.explanation)}</div>`));
+  }
   const nav=el(`<div class="navwrap"></div>`);
-  const back=el(`<button class="btn ghost sm">← 홈</button>`); back.onclick=home;
-  nav.appendChild(back);
+  const hb=el(`<button class="btn ghost sm">← 홈</button>`); hb.onclick=home;
+  const prev=el(`<button class="btn sm" ${i===0?'disabled':''}>← 이전</button>`); prev.onclick=()=>{ if(i>0){s.idx--;renderPractice();} };
+  const last=i>=s.list.length-1;
+  const next=el(`<button class="btn ${answered?'primary':'sm'}">${last?'결과 보기':'다음 →'}</button>`);
+  next.onclick=()=>{ if(last) practiceResult(); else { s.idx++; renderPractice(); } };
+  nav.appendChild(hb); nav.appendChild(el(`<span class="spacer"></span>`)); nav.appendChild(prev); nav.appendChild(next);
   card.appendChild(nav);
   app.appendChild(card);
 }
-function answerPractice(pick,chEl,card){
-  const s=pstate; if(s.answered) return; s.answered=true; s.done++;
-  const q=s.list[s.idx]; const ok=(pick===q.answer);
-  if(ok) s.correct++; else addWrong(q.id);
-  bumpStat(ok);
-  [...chEl.children].forEach((b,i)=>{
-    b.setAttribute('disabled','');
-    if(i+1===q.answer) b.classList.add('correct');
-    else if(i+1===pick) b.classList.add('wrong');
-    else b.classList.add('dim');
-  });
-  card.appendChild(el(`<div class="verdict ${ok?'ok':'bad'}">${ok?'정답입니다 ✓':'오답입니다 ✗  (정답 '+NUM[q.answer]+')'}</div>`));
-  if(q.explanation) card.appendChild(el(`<div class="explain"><span class="tag">해설</span>${esc(q.explanation)}</div>`));
-  if(!ok) card.appendChild(el(`<div class="small muted" style="margin-top:8px">오답노트에 저장됨</div>`));
-  const nav=card.querySelector('.navwrap'); nav.innerHTML='';
-  const back=el(`<button class="btn ghost sm">← 홈</button>`); back.onclick=home; nav.appendChild(back);
-  nav.appendChild(el(`<span class="spacer"></span>`));
-  const last=(s.idx>=s.list.length-1);
-  const next=el(`<button class="btn primary">${last?'결과 보기':'다음 →'}</button>`);
-  next.onclick=()=>{ if(last){ practiceResult(); } else { s.idx++; s.answered=false; renderPractice(); } };
-  nav.appendChild(next);
-}
 function practiceResult(){
-  clear(); const s=pstate; const pct=s.done?Math.round(s.correct/s.done*100):0;
+  clear(); const s=pstate; const st=pStats(); const pct=st.done?Math.round(st.correct/st.done*100):0;
   app.appendChild(el(`<div class="card" style="text-align:center">
-    <div class="h2">연습 완료 · ${esc(s.label)}</div>
+    <div class="h2">연습 결과 · ${esc(s.label)}</div>
     <div class="score">${pct}<span style="font-size:20px">%</span></div>
-    <div class="muted">${s.list.length}문항 중 ${s.correct}문항 정답</div>
+    <div class="muted">${s.list.length}문항 중 푼 ${st.done} · 정답 ${st.correct} · 오답 ${st.wrong} · 안 푼 ${st.unsolved}</div>
   </div>`));
   const row=el(`<div class="row" style="margin-top:14px"></div>`);
-  const again=el(`<button class="btn">다시 풀기</button>`); again.onclick=()=>startPractice(shuffle(s.list),s.label);
+  const cont=el(`<button class="btn">이어 풀기</button>`); cont.onclick=()=>{ const u=s.list.findIndex((q,j)=>s.picks[j]===undefined); s.idx=u<0?s.idx:u; renderPractice(); };
+  const again=el(`<button class="btn">처음부터</button>`); again.onclick=()=>startPractice(s.list,s.label);
   const wr=el(`<button class="btn">오답노트 (${getWrong().length})</button>`); wr.onclick=review;
   const h=el(`<button class="btn primary">홈</button>`); h.onclick=home;
-  row.appendChild(again); row.appendChild(wr); row.appendChild(el(`<span class="spacer"></span>`)); row.appendChild(h);
+  row.appendChild(cont); row.appendChild(again); row.appendChild(wr); row.appendChild(el(`<span class="spacer"></span>`)); row.appendChild(h);
   app.appendChild(row);
 }
 
