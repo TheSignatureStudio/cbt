@@ -117,7 +117,7 @@ setBar();
 
 // ====== 설정: 로그인 사용 시 아래 두 값을 채우세요 (비워두면 로그인 없이 로컬 저장으로 동작) ======
 const SUPABASE_URL = "https://xiaoorbmjvjqkicbzvgi.supabase.co";        // 예: https://xxxx.supabase.co
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdWJhYmFzZSIsInJlZiI6InhpYW9vcmJtanZqcWtpY2J6dmdpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1NDY3ODUsImV4cCI6MjA5NzEyMjc4NX0.OpE2TE6bWDXEBwG-2vEwETylQytzkZaPS8iMPtNQxDo"; // Supabase anon(public) 키
+const SUPABASE_ANON_KEY = "sb_publishable_OydsKiGivvM11lz3-_CwwA_HICVdeqC"; // Supabase anon(public) 키
 const CLOUD = /^https:\/\/.+\.supabase\.co/.test(SUPABASE_URL) && (SUPABASE_ANON_KEY||'').length>20 && !!window.supabase;
 const sb = CLOUD ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
