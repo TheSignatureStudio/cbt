@@ -49,6 +49,8 @@ button{font-family:inherit;font-size:16px;cursor:pointer}
 .qmeta{display:flex;justify-content:space-between;align-items:center;color:var(--muted);font-size:13px;margin-bottom:8px}
 .progress{height:6px;background:var(--line);border-radius:999px;overflow:hidden;margin:4px 0 14px}
 .progress > i{display:block;height:100%;background:var(--brand2);width:0;transition:width .2s}
+.sbar{height:8px;background:var(--line);border-radius:999px;overflow:hidden;margin-top:3px}
+.sbar > i{display:block;height:100%;border-radius:999px}
 .stem{font-size:17px;font-weight:600;margin:6px 0 14px;white-space:pre-wrap;word-break:break-word}
 .choices{display:grid;gap:10px}
 .choice{display:flex;gap:10px;align-items:flex-start;text-align:left;width:100%;
@@ -131,9 +133,9 @@ const mem={};
 const ls={ get(k){try{return localStorage.getItem(k);}catch(e){return mem[k]??null;}},
            set(k,v){try{localStorage.setItem(k,v);}catch(e){mem[k]=v;}} };
 const LKEY='cbt_all';
-const ST={ user:null, loaded:false, wrong:new Set(), stats:{solved:0,correct:0} };
-function loadLocal(){ try{ const o=JSON.parse(ls.get(LKEY)||'{}'); ST.wrong=new Set(o.wrong||[]); ST.stats=Object.assign({solved:0,correct:0},o.stats||{}); }catch(e){ ST.wrong=new Set(); ST.stats={solved:0,correct:0}; } }
-function snapshot(){ return { wrong:[...ST.wrong], stats:ST.stats }; }
+const ST={ user:null, loaded:false, wrong:new Set(), stats:{solved:0,correct:0}, bySec:{} };
+function loadLocal(){ try{ const o=JSON.parse(ls.get(LKEY)||'{}'); ST.wrong=new Set(o.wrong||[]); ST.stats=Object.assign({solved:0,correct:0},o.stats||{}); ST.bySec=o.bySec||{}; }catch(e){ ST.wrong=new Set(); ST.stats={solved:0,correct:0}; ST.bySec={}; } }
+function snapshot(){ return { wrong:[...ST.wrong], stats:ST.stats, bySec:ST.bySec }; }
 let saveTimer=null;
 function persist(){ ls.set(LKEY, JSON.stringify(snapshot())); if(sb&&ST.user){ clearTimeout(saveTimer); saveTimer=setTimeout(cloudSave,700); } }
 async function cloudSave(){ try{ await sb.from('cbt_progress').upsert({ user_id:ST.user.id, data:snapshot(), updated_at:new Date().toISOString() }); }catch(e){} }
@@ -142,6 +144,7 @@ async function cloudLoad(){ try{
   if(error) return;
   const r=(data&&data.data)||{}; (r.wrong||[]).forEach(x=>ST.wrong.add(x));
   const rs=r.stats||{}; ST.stats={ solved:Math.max(ST.stats.solved,rs.solved||0), correct:Math.max(ST.stats.correct,rs.correct||0) };
+  const rb=r.bySec||{}; Object.keys(rb).forEach(k=>{ if(!ST.bySec[k] || (rb[k].seen||0)>(ST.bySec[k].seen||0)) ST.bySec[k]=rb[k]; });
   persist();
 }catch(e){} }
 // 접근자
@@ -149,7 +152,7 @@ function getWrong(){ return [...ST.wrong]; }
 function addWrong(id){ if(!ST.wrong.has(id)){ ST.wrong.add(id); persist(); } }
 function delWrong(id){ if(ST.wrong.delete(id)){ persist(); } }
 function setWrong(a){ ST.wrong=new Set(a); persist(); }
-function bumpStat(ok){ ST.stats.solved++; if(ok)ST.stats.correct++; persist(); }
+function bumpStat(q,ok){ ST.stats.solved++; if(ok)ST.stats.correct++; if(q&&q.section){ const k=q.subject+' · '+q.section; const e=ST.bySec[k]||(ST.bySec[k]={seen:0,correct:0}); e.seen++; if(ok)e.correct++; } persist(); }
 
 // ---------- 인증(이메일/비밀번호) ----------
 function userName(u){ const m=(u&&u.user_metadata)||{}; return m.name||m.full_name||m.nickname||m.preferred_username||(u&&u.email)||'내 계정'; }
@@ -258,11 +261,34 @@ function home(){
   modes.appendChild(modeCard('⏱️','실전 모의고사','시간제한·자동채점으로 실전처럼', ()=>examSetup()));
   modes.appendChild(modeCard('🔖','오답노트','틀린 문제만 모아 다시 풀기'+(wrong?` (${wrong})`:''), ()=>review()));
   app.appendChild(modes);
+  const statsBtn=el(`<button class="btn ghost sm" style="margin-top:12px">📊 학습 통계 (약점 단원 보기)</button>`); statsBtn.onclick=statsView; app.appendChild(statsBtn);
   app.appendChild(el(`<div class="foot">정답은 문제집 정답키·해설을 기반으로 복원했습니다. 오류가 보이면 표시해 주세요.<br>학습용 — 저작권은 총회/고시부에 있습니다.</div>`));
 }
 function modeCard(ic,t,d,fn){
   const c=el(`<button class="btn mode"><span class="ic">${ic}</span><span class="t">${t}</span><span class="d">${esc(d)}</span></button>`);
   c.onclick=fn; return c;
+}
+function statsView(){
+  clear();
+  const head=el(`<div class="card"><div class="h1">학습 통계</div><div class="muted small">푼 문제 기준 정답률 · 약한 단원부터 표시</div></div>`);
+  app.appendChild(head);
+  const keys=Object.keys(ST.bySec).filter(k=>ST.bySec[k].seen>0);
+  if(!keys.length){ head.appendChild(el(`<div class="empty">아직 푼 문제가 없습니다.<br>연습·모의고사를 풀면 과목·단원별 정답률이 쌓입니다.</div>`)); }
+  else {
+    const bySubj={};
+    keys.forEach(k=>{ const i=k.indexOf(' · '); const subj=k.slice(0,i), sec=k.slice(i+3); (bySubj[subj]=bySubj[subj]||[]).push(Object.assign({sec},ST.bySec[k])); });
+    SUBJECTS.forEach(subj=>{
+      const rows=bySubj[subj]; if(!rows) return;
+      const seen=rows.reduce((a,r)=>a+r.seen,0), cor=rows.reduce((a,r)=>a+r.correct,0);
+      const sc=el(`<div class="card" style="margin-top:12px"></div>`);
+      sc.appendChild(el(`<div class="row"><b>${esc(subj)}</b><span class="spacer"></span><span class="muted small">${cor}/${seen} · ${Math.round(cor/seen*100)}%</span></div>`));
+      rows.sort((a,b)=> a.correct/a.seen - b.correct/b.seen);
+      rows.forEach(r=>{ const pct=Math.round(r.correct/r.seen*100); const col=pct<60?'var(--bad)':(pct<80?'var(--warn)':'var(--ok)');
+        sc.appendChild(el(`<div style="margin-top:9px"><div class="row small"><span>${esc(r.sec)}</span><span class="spacer"></span><span class="muted">${r.correct}/${r.seen} · ${pct}%</span></div><div class="sbar"><i style="width:${pct}%;background:${col}"></i></div></div>`)); });
+      app.appendChild(sc);
+    });
+  }
+  const h=el(`<button class="btn primary" style="margin-top:14px">← 홈</button>`); h.onclick=home; app.appendChild(h);
 }
 // 문항별 오류 신고·의견 (필요시에만 펼침)
 function reportBox(qid){
@@ -342,7 +368,7 @@ function renderPractice(){
   q.choices.forEach((c,k)=>{
     const b=el(`<button class="choice"><span class="num">${NUM[k+1]}</span><span>${esc(c)}</span></button>`);
     if(answered){ b.setAttribute('disabled',''); if(k+1===q.answer)b.classList.add('correct'); else if(k+1===pick)b.classList.add('wrong'); else b.classList.add('dim'); }
-    else b.onclick=()=>{ s.picks[i]=k+1; if(k+1!==q.answer) addWrong(q.id); bumpStat(k+1===q.answer); renderPractice(); };
+    else b.onclick=()=>{ s.picks[i]=k+1; if(k+1!==q.answer) addWrong(q.id); bumpStat(q, k+1===q.answer); renderPractice(); };
     ch.appendChild(b);
   });
   card.appendChild(ch);
@@ -442,7 +468,7 @@ function renderExam(){
 }
 function submitExam(timeUp){
   clear(); const s=estate; let correct=0;
-  s.list.forEach((q,i)=>{ const a=s.answers[i]; if(a===q.answer) correct++; else addWrong(q.id); if(a) bumpStat(a===q.answer); });
+  s.list.forEach((q,i)=>{ const a=s.answers[i]; if(a===q.answer) correct++; else addWrong(q.id); if(a) bumpStat(q, a===q.answer); });
   const pct=Math.round(correct/s.list.length*100);
   app.appendChild(el(`<div class="card" style="text-align:center">
     <div class="h2">${timeUp?'시간 종료 · ':''}모의고사 결과 · ${esc(s.label)}</div>
@@ -511,7 +537,7 @@ function renderReviewQuiz(){
   q.choices.forEach((c,i)=>{ const b=el(`<button class="choice"><span class="num">${NUM[i+1]}</span><span>${esc(c)}</span></button>`);
     b.onclick=()=>{ if(s.answered)return; s.answered=true; s.done++; const ok=(i+1===q.answer);
       if(ok){ s.correct++; delWrong(q.id); }
-      bumpStat(ok);
+      bumpStat(q, ok);
       [...ch.children].forEach((bb,k)=>{ bb.setAttribute('disabled',''); if(k+1===q.answer)bb.classList.add('correct'); else if(k===i)bb.classList.add('wrong'); else bb.classList.add('dim'); });
       card.appendChild(el(`<div class="verdict ${ok?'ok':'bad'}">${ok?'정답 ✓ (오답노트에서 제거)':'오답 ✗ (정답 '+NUM[q.answer]+')'}</div>`));
       if(q.explanation) card.appendChild(el(`<div class="explain"><span class="tag">해설</span>${esc(q.explanation)}</div>`));
